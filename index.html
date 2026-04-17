@@ -298,7 +298,6 @@
     // iOS Safari prompts per call, so we only use watchPosition (one prompt,
     // and it fires the first fix immediately after the user grants access).
     let geoStarted = false;
-    let geoWatchId = null;
     function startGeolocation() {
       if (geoStarted) return;
       geoStarted = true;
@@ -306,37 +305,32 @@
         setStatus('Geolocation not supported', 'error');
         return;
       }
-      // Try high accuracy first with a timeout; iOS 16 can hang without one
-      geoWatchId = navigator.geolocation.watchPosition(onPosition, onGeoError, {
+      // High-accuracy watch — no timeout so iOS doesn't fire repeated errors
+      // while the user is still responding to the permission prompt
+      navigator.geolocation.watchPosition(onPosition, onGeoError, {
         enableHighAccuracy: true,
-        timeout: 10000,
         maximumAge: 5000,
+      });
+      // Parallel coarse one-shot as a fast fallback (WiFi/cell)
+      navigator.geolocation.getCurrentPosition(onPosition, () => {}, {
+        enableHighAccuracy: false,
+        timeout: 8000,
+        maximumAge: 60000,
       });
     }
 
     function onPosition(pos) {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
-      // EMA smoothing; seed on first fix
       userLat = userLat == null ? lat : G_ALPHA * lat + (1 - G_ALPHA) * userLat;
       userLng = userLng == null ? lng : G_ALPHA * lng + (1 - G_ALPHA) * userLng;
       scheduleUpdate();
     }
 
-    let geoFellBack = false;
     function onGeoError(err) {
-      // TIMEOUT — fall back to coarse (WiFi/cell) location
-      if (err.code === err.TIMEOUT && !geoFellBack) {
-        geoFellBack = true;
-        if (geoWatchId != null) navigator.geolocation.clearWatch(geoWatchId);
-        geoWatchId = navigator.geolocation.watchPosition(onPosition, onGeoError, {
-          enableHighAccuracy: false,
-          timeout: 15000,
-          maximumAge: 30000,
-        });
-        setStatus('Using approximate location...', '');
-        return;
-      }
+      // Only show persistent errors — ignore transient timeouts since
+      // watchPosition keeps retrying automatically
+      if (err.code === err.TIMEOUT) return;
       setStatus(`Location error: ${err.message}`, 'error');
     }
 
