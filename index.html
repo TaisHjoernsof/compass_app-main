@@ -379,20 +379,14 @@
     function requestOrientationPermission() {
       if (typeof DeviceOrientationEvent !== 'undefined' &&
           typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS Safari: must sequence permission dialogs — orientation first,
-        // then geolocation after the prompt is dismissed, to prevent Safari
-        // from swallowing the location prompt.
         DeviceOrientationEvent.requestPermission()
           .then(state => {
             if (state === 'granted') startOrientation();
             else setStatus('Orientation permission denied', 'error');
           })
-          .catch(err => setStatus(`Permission error: ${err}`, 'error'))
-          .finally(() => startGeolocation());
+          .catch(err => setStatus(`Permission error: ${err}`, 'error'));
       } else {
-        // Non-Safari (e.g. Chrome on iOS): no orientation prompt, safe to start both
         startOrientation();
-        startGeolocation();
       }
     }
 
@@ -493,7 +487,10 @@
       if (introStarted) { finishIntro(); return; }
       introStarted = true;
       introStart.classList.add('hidden');
+      // Order matters on iOS Safari: requestPermission must be FIRST in the
+      // user gesture — audio.play() can consume the activation token.
       requestOrientationPermission();
+      startGeolocation();
       // Unlock audio while we're inside the user gesture so iOS allows play() later
       audio.play().then(() => { audio.pause(); audio.currentTime = 0; audioUnlocked = true; }).catch(() => {});
       introVideo.play().catch(finishIntro);
