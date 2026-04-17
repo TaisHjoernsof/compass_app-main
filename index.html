@@ -298,6 +298,7 @@
     // iOS Safari prompts per call, so we only use watchPosition (one prompt,
     // and it fires the first fix immediately after the user grants access).
     let geoStarted = false;
+    let geoWatchId = null;
     function startGeolocation() {
       if (geoStarted) return;
       geoStarted = true;
@@ -305,8 +306,10 @@
         setStatus('Geolocation not supported', 'error');
         return;
       }
-      navigator.geolocation.watchPosition(onPosition, onGeoError, {
+      // Try high accuracy first with a timeout; iOS 16 can hang without one
+      geoWatchId = navigator.geolocation.watchPosition(onPosition, onGeoError, {
         enableHighAccuracy: true,
+        timeout: 10000,
         maximumAge: 5000,
       });
     }
@@ -320,7 +323,20 @@
       scheduleUpdate();
     }
 
+    let geoFellBack = false;
     function onGeoError(err) {
+      // TIMEOUT — fall back to coarse (WiFi/cell) location
+      if (err.code === err.TIMEOUT && !geoFellBack) {
+        geoFellBack = true;
+        if (geoWatchId != null) navigator.geolocation.clearWatch(geoWatchId);
+        geoWatchId = navigator.geolocation.watchPosition(onPosition, onGeoError, {
+          enableHighAccuracy: false,
+          timeout: 15000,
+          maximumAge: 30000,
+        });
+        setStatus('Using approximate location...', '');
+        return;
+      }
       setStatus(`Location error: ${err.message}`, 'error');
     }
 
@@ -374,11 +390,9 @@
             if (state === 'granted') startOrientation();
             else setStatus('Orientation permission denied', 'error');
           })
-          .catch(err => setStatus(`Permission error: ${err}`, 'error'))
-          .finally(() => startGeolocation());
+          .catch(err => setStatus(`Permission error: ${err}`, 'error'));
       } else {
         startOrientation();
-        startGeolocation();
       }
     }
 
@@ -479,6 +493,7 @@
       if (introStarted) { finishIntro(); return; }
       introStarted = true;
       introStart.classList.add('hidden');
+      startGeolocation();
       requestOrientationPermission();
       // Unlock audio while we're inside the user gesture so iOS allows play() later
       audio.play().then(() => { audio.pause(); audio.currentTime = 0; audioUnlocked = true; }).catch(() => {});
