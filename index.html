@@ -374,9 +374,11 @@
             if (state === 'granted') startOrientation();
             else setStatus('Orientation permission denied', 'error');
           })
-          .catch(err => setStatus(`Permission error: ${err}`, 'error'));
+          .catch(err => setStatus(`Permission error: ${err}`, 'error'))
+          .finally(() => startGeolocation());
       } else {
         startOrientation();
+        startGeolocation();
       }
     }
 
@@ -477,7 +479,6 @@
       if (introStarted) { finishIntro(); return; }
       introStarted = true;
       introStart.classList.add('hidden');
-      startGeolocation();
       requestOrientationPermission();
       // Unlock audio while we're inside the user gesture so iOS allows play() later
       audio.play().then(() => { audio.pause(); audio.currentTime = 0; audioUnlocked = true; }).catch(() => {});
